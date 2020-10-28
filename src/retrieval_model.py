@@ -1,13 +1,26 @@
+from os import name
 import tensorflow as tf
-from tensorflow.contrib.layers.python.layers import fully_connected
+from tensorflow.keras.layers import Input, Dense, BatchNormalization, Dropout, ReLU
+from tensorflow.keras.models import Model
+
+
 
 def add_fc(inputs, outdim, train_phase, scope_in):
+    import tensorflow.compat.v1 as tf1
+    tf1.disable_v2_behavior()
+
+    fully_connected = tf1.contrib.layers.python.layers.fully_connected
+
     fc =  fully_connected(inputs, outdim, activation_fn=None, scope=scope_in + '/fc')
-    fc_bnorm = tf.layers.batch_normalization(fc, momentum=0.1, epsilon=1e-5,
+    fc_bnorm = tf1.layers.batch_normalization(fc, momentum=0.1, epsilon=1e-5,
                          training=train_phase, name=scope_in + '/bnorm')
-    fc_relu = tf.nn.relu(fc_bnorm, name=scope_in + '/relu')
-    fc_out = tf.layers.dropout(fc_relu, seed=0, training=train_phase, name=scope_in + '/dropout')
+    fc_relu = tf1.nn.relu(fc_bnorm, name=scope_in + '/relu')
+    fc_out = tf1.layers.dropout(fc_relu, seed=0, training=train_phase, name=scope_in + '/dropout')
     return fc_out
+
+
+
+
 
 def pdist(x1, x2):
     """
