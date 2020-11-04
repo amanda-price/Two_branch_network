@@ -7,8 +7,8 @@ import sys
 import numpy as np
 import tensorflow as tf
 
-from dataset_utils import DatasetLoader
-from retrieval_model import setup_train_model
+from .dataset_utils import DatasetLoader
+from .retrieval_model import setup_train_model
 
 FLAGS = None
 

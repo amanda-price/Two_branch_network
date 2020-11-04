@@ -8,8 +8,8 @@ import time
 import numpy as np
 import tensorflow as tf
 
-from dataset_utils import DatasetLoader
-from retrieval_model import setup_eval_model
+from .dataset_utils import DatasetLoader
+from .retrieval_model import setup_eval_model
 
 FLAGS = None
 
