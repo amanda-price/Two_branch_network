@@ -1,4 +1,4 @@
-image_feat_path = "data/test_data/flickr30k/flickr30k_vgg_image_feat_test.mat"
-sent_feat_path = "data/test_data/flickr30k/flickr30k_text_feat_test.mat"
+image_feat_path = "./data/test_data/flickr30k/flickr30k_vgg_image_feat_test.mat"
+sent_feat_path = "./data/test_data/flickr30k/flickr30k_text_feat_test.mat"
 save_dir = ""
 restore_path = ""

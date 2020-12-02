@@ -1,11 +1,14 @@
-
+import os.path as p
 
 from .dataset_utils import DatasetLoader
-from .retrieval_model import setup_train_model
+from .retrieval_model import EmbeddingLoss, setup_train_model, embedding_model
 
-def main(args):
-    image_feat_path = args['image_feat_path']
-    sent_feat_path = args['sent_feat_path']
+def train_step():
+    pass
+
+def main(config: dict):
+    image_feat_path = p.abspath(config['image_feat_path'])
+    sent_feat_path = p.abspath(config['sent_feat_path'])
 
     # Load data.
     data_loader = DatasetLoader(image_feat_path,sent_feat_path)
@@ -14,12 +17,21 @@ def main(args):
     #steps_per_epoch = num_sents // args['batch_size']
     #num_steps = steps_per_epoch * args['max_num_epoch']
 
+    model = embedding_model(data_loader.im_feats.shape, data_loader.sent_feats.shape)
+    loss = EmbeddingLoss(**config)
+
+    img_feats = data_loader.im_feats
+    sent_feats = data_loader.sent_feats
+
+    # for epoch in config["epochs"]:
+
+
     # Setup training operation.
-    loss = setup_train_model(data_loader.im_feats, data_loader.sent_feats) 
+    # loss = setup_train_model(data_loader.im_feats, data_loader.sent_feats)
     #print(summary(loss))
     # Setup optimizer.
-    
+
     # Setup model saver.
-    
+
 
 

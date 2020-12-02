@@ -69,7 +69,7 @@ def pdist(x1: tf.Tensor, x2: tf.Tensor) -> tf.Tensor:
 
 class EmbeddingLoss:
     def __init__(self, sample_size=2, batch_size=500, margin=0.05,
-                 num_neg_sample=10, sent_only_loss_factor=0.05, im_loss_factor=1.5):
+                 num_neg_sample=10, sent_only_loss_factor=0.05, im_loss_factor=1.5, **kwargs):
         """Calculates embedding loss based on the parameters.
 
         Args:
@@ -152,7 +152,7 @@ class EmbeddingLoss:
 
         loss = im_loss * self.im_loss_factor + sen_loss + \
             sen_only_loss * self.sent_only_loss_factor
-            
+
         return loss
 
 
