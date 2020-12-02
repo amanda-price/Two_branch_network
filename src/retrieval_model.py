@@ -24,18 +24,18 @@ def fully_connected(name="fc", hidden=2048, dropout=0.25):
     return _inner
 
 
-def embedding_model(img_feats: tuple, sent_feats: tuple) -> Model:
+def embedding_model(img_feats_shape: tuple, sent_feats_shape: tuple) -> Model:
     """Builds a two branch network embedding model
 
     Args:
-        img_feats (tuple): Shape of image features
-        sent_feats (tuple): Shape of sentence features
+        img_feats_shape (tuple): Shape of image features
+        sent_feats_shape (tuple): Shape of sentence features
 
     Returns:
         Model: Embedding model
     """
-    img_in = Input(shape=img_feats, name="image_input")
-    sent_in = Input(shape=sent_feats, name="sentence_input")
+    img_in = Input(shape=img_feats_shape, name="image_input")
+    sent_in = Input(shape=sent_feats_shape, name="sentence_input")
 
     img_fc = fully_connected(name="img_fc")(img_in)
     img_fc2 = Dense(512, name="fc2-d")(img_fc)
@@ -68,8 +68,8 @@ def pdist(x1: tf.Tensor, x2: tf.Tensor) -> tf.Tensor:
 
 
 class EmbeddingLoss:
-    def __init__(self, sample_size=None, batch_size=None, margin=None,
-                 num_neg_sample=None, sent_only_loss_factor=None, im_loss_factor=None):
+    def __init__(self, sample_size=2, batch_size=500, margin=0.05,
+                 num_neg_sample=10, sent_only_loss_factor=0.05, im_loss_factor=1.5):
         """Calculates embedding loss based on the parameters.
 
         Args:
@@ -99,11 +99,31 @@ class EmbeddingLoss:
             im_loss, k=self.num_neg_sample)[0])
         return im_loss, pos_pair_dist
 
-    def sent_loss(self):
-        pass
+    def sent_loss(self, sent_im_dist, im_labels, num_img, sent_im_ratio, num_sent, pos_pair_dist):
+        neg_pair_dist = tf.reshape(tf.boolean_mask(tf.transpose(
+            sent_im_dist), ~tf.transpose(im_labels)), [num_img, -1])
+        neg_pair_dist = tf.reshape(
+            tf.tile(neg_pair_dist, [1, sent_im_ratio]), [num_sent, -1])
+        sent_loss = tf.clip_by_value(
+            self.margin + pos_pair_dist - neg_pair_dist, 0, 1e6)
+        sent_loss = tf.reduce_mean(tf.nn.top_k(
+            sent_loss, k=self.num_neg_sample)[0])
+        return sent_loss
 
-    def sent_only_loss(self):
-        pass
+    def sent_only_loss(self, sent_embeds, im_labels, num_sent, sent_im_ratio):
+        sent_sent_dist = pdist(sent_embeds, sent_embeds)
+        sent_sent_mask = tf.reshape(tf.tile(tf.transpose(im_labels), [
+                                    1, sent_im_ratio]), [num_sent, num_sent])
+        pos_pair_dist = tf.reshape(tf.boolean_mask(
+            sent_sent_dist, sent_sent_mask), [-1, sent_im_ratio])
+        pos_pair_dist = tf.reduce_max(pos_pair_dist, axis=1, keep_dims=True)
+        neg_pair_dist = tf.reshape(tf.boolean_mask(
+            sent_sent_dist, ~sent_sent_mask), [num_sent, -1])
+        sent_only_loss = tf.clip_by_value(
+            self.margin + pos_pair_dist - neg_pair_dist, 0, 1e6)
+        sent_only_loss = tf.reduce_mean(tf.nn.top_k(
+            sent_only_loss, k=self.num_neg_sample)[0])
+        return sent_only_loss
 
     def __call__(self, im_embeds: tf.Tensor, sent_embeds: tf.Tensor, im_labels: tf.Tensor) -> tf.Tensor:
         """[summary]
@@ -125,83 +145,15 @@ class EmbeddingLoss:
         im_loss, pos_pair_dist = self.img_loss(sent_im_dist, im_labels, num_sent)
 
         # sentence loss: image, positive sentence, and negative sentence
-        neg_pair_dist = tf.reshape(tf.boolean_mask(tf.transpose(
-            sent_im_dist), ~tf.transpose(im_labels)), [num_img, -1])
-        neg_pair_dist = tf.reshape(
-            tf.tile(neg_pair_dist, [1, sent_im_ratio]), [num_sent, -1])
-        sent_loss = tf.clip_by_value(
-            self.margin + pos_pair_dist - neg_pair_dist, 0, 1e6)
-        sent_loss = tf.reduce_mean(tf.nn.top_k(
-            sent_loss, k=self.num_neg_sample)[0])
+        sen_loss = self.sent_loss(sent_im_dist, im_labels, num_img, sent_im_ratio, num_sent, pos_pair_dist)
 
         # sentence only loss (neighborhood-preserving constraints)
-        sent_sent_dist = pdist(sent_embeds, sent_embeds)
-        sent_sent_mask = tf.reshape(tf.tile(tf.transpose(im_labels), [
-                                    1, sent_im_ratio]), [num_sent, num_sent])
-        pos_pair_dist = tf.reshape(tf.boolean_mask(
-            sent_sent_dist, sent_sent_mask), [-1, sent_im_ratio])
-        pos_pair_dist = tf.reduce_max(pos_pair_dist, axis=1, keep_dims=True)
-        neg_pair_dist = tf.reshape(tf.boolean_mask(
-            sent_sent_dist, ~sent_sent_mask), [num_sent, -1])
-        sent_only_loss = tf.clip_by_value(
-            self.margin + pos_pair_dist - neg_pair_dist, 0, 1e6)
-        sent_only_loss = tf.reduce_mean(tf.nn.top_k(
-            sent_only_loss, k=self.num_neg_sample)[0])
+        sen_only_loss = self.sent_only_loss(sent_embeds, im_labels, num_sent, sent_im_ratio)
 
-        loss = im_loss * self.im_loss_factor + sent_loss + \
-            sent_only_loss * self.sent_only_loss_factor
+        loss = im_loss * self.im_loss_factor + sen_loss + \
+            sen_only_loss * self.sent_only_loss_factor
+            
         return loss
-
-
-def embedding_loss_old(im_embeds, sent_embeds, im_labels, args):
-    """
-        im_embeds: (b, 512) image embedding tensors
-        sent_embeds: (sample_size * b, 512) sentence embedding tensors
-            where the order of sentence corresponds to the order of images and
-            setnteces for the same image are next to each other
-        im_labels: (sample_size * b, b) boolean tensor, where (i, j) entry is
-            True if and only if sentence[i], image[j] is a positive pair
-    """
-    # compute embedding loss
-    sent_im_ratio = args.sample_size
-    num_img = args.batch_size
-    num_sent = num_img * sent_im_ratio
-
-    sent_im_dist = pdist(sent_embeds, im_embeds)
-    # image loss: sentence, positive image, and negative image
-    pos_pair_dist = tf.reshape(tf.boolean_mask(
-        sent_im_dist, im_labels), [num_sent, 1])
-    neg_pair_dist = tf.reshape(tf.boolean_mask(
-        sent_im_dist, ~im_labels), [num_sent, -1])
-    im_loss = tf.clip_by_value(
-        args.margin + pos_pair_dist - neg_pair_dist, 0, 1e6)
-    im_loss = tf.reduce_mean(tf.nn.top_k(im_loss, k=args.num_neg_sample)[0])
-    # sentence loss: image, positive sentence, and negative sentence
-    neg_pair_dist = tf.reshape(tf.boolean_mask(tf.transpose(
-        sent_im_dist), ~tf.transpose(im_labels)), [num_img, -1])
-    neg_pair_dist = tf.reshape(
-        tf.tile(neg_pair_dist, [1, sent_im_ratio]), [num_sent, -1])
-    sent_loss = tf.clip_by_value(
-        args.margin + pos_pair_dist - neg_pair_dist, 0, 1e6)
-    sent_loss = tf.reduce_mean(tf.nn.top_k(
-        sent_loss, k=args.num_neg_sample)[0])
-    # sentence only loss (neighborhood-preserving constraints)
-    sent_sent_dist = pdist(sent_embeds, sent_embeds)
-    sent_sent_mask = tf.reshape(tf.tile(tf.transpose(im_labels), [
-                                1, sent_im_ratio]), [num_sent, num_sent])
-    pos_pair_dist = tf.reshape(tf.boolean_mask(
-        sent_sent_dist, sent_sent_mask), [-1, sent_im_ratio])
-    pos_pair_dist = tf.reduce_max(pos_pair_dist, axis=1, keep_dims=True)
-    neg_pair_dist = tf.reshape(tf.boolean_mask(
-        sent_sent_dist, ~sent_sent_mask), [num_sent, -1])
-    sent_only_loss = tf.clip_by_value(
-        args.margin + pos_pair_dist - neg_pair_dist, 0, 1e6)
-    sent_only_loss = tf.reduce_mean(tf.nn.top_k(
-        sent_only_loss, k=args.num_neg_sample)[0])
-
-    loss = im_loss * args.im_loss_factor + sent_loss + \
-        sent_only_loss * args.sent_only_loss_factor
-    return loss
 
 
 def recall_k(im_embeds, sent_embeds, im_labels, ks=None):
@@ -234,14 +186,13 @@ def recall_k(im_embeds, sent_embeds, im_labels, ks=None):
         axis=0)
 
 
-def setup_train_model(im_feats, sent_feats, train_phase, im_labels, args):
+def setup_train_model(im_feats, sent_feats):
     # im_feats b x image_feature_dim
     # sent_feats 5b x sent_feature_dim
     # train_phase bool (Should be True.)
     # im_labels 5b x b
-    i_embed, s_embed = embedding_model(
-        im_feats, sent_feats, train_phase, im_labels)
-    loss = embedding_loss(i_embed, s_embed, im_labels, args)
+    embed_model = embedding_model(im_feats.shape, sent_feats.shape)
+    loss = EmbeddingLoss(embed_model.inputs[0], embed_model.inputs[1], im_labels, args)
     return loss
 
 
