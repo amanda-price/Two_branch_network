@@ -116,7 +116,7 @@ class EmbeddingLoss:
                                     1, sent_im_ratio]), [num_sent, num_sent])
         pos_pair_dist = tf.reshape(tf.boolean_mask(
             sent_sent_dist, sent_sent_mask), [-1, sent_im_ratio])
-        pos_pair_dist = tf.reduce_max(pos_pair_dist, axis=1, keep_dims=True)
+        pos_pair_dist = tf.reduce_max(pos_pair_dist, axis=1, keepdims=True)
         neg_pair_dist = tf.reshape(tf.boolean_mask(
             sent_sent_dist, ~sent_sent_mask), [num_sent, -1])
         sent_only_loss = tf.clip_by_value(
@@ -137,7 +137,7 @@ class EmbeddingLoss:
             tf.Tensor: [description]
         """
         sent_im_ratio = self.sample_size
-        num_img = self.batch_size
+        num_img = im_embeds.shape[0]
         num_sent = num_img * sent_im_ratio
 
         sent_im_dist = pdist(sent_embeds, im_embeds)
